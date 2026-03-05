@@ -30,19 +30,19 @@ pip install -e ".[dev]"
 Parse a single mbox file:
 
 ```
-mbox-parser parse --mbox-file ~/Takeout/Mail/All\ mail.mbox
+mbox-parser parse --mbox-file /path/to/mailbox.mbox
 ```
 
 Parse all mbox files in a directory:
 
 ```
-mbox-parser parse --mbox-dir ~/Takeout/Mail/
+mbox-parser parse --mbox-dir /path/to/mbox-files/
 ```
 
 Specify output directory and database path:
 
 ```
-mbox-parser parse --mbox-dir ~/Takeout/Mail/ --output-dir ./output --db ./emails.db
+mbox-parser parse --mbox-dir /path/to/mbox-files/ --output-dir ./output --db ./emails.db
 ```
 
 View database statistics:
