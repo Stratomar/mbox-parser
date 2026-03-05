@@ -1,0 +1,25 @@
+[project]
+name = "mbox-parser"
+version = "0.1.0"
+description = ""
+requires-python = ">=3.11"
+
+[project.optional-dependencies]
+dev = ["ruff", "pytest", "mypy"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 88
+
+[tool.ruff.format]
+# Uses ruff's default style (Black-compatible)
+
+[tool.mypy]
+ignore_missing_imports = true
+
+# Tighten per-module as the project matures:
+# [[tool.mypy.overrides]]
+# module = ["some_untyped_lib.*"]
+# ignore_missing_imports = true
