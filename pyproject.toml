@@ -1,8 +1,12 @@
 [project]
 name = "mbox-parser"
 version = "0.1.0"
-description = ""
+description = "Parse Gmail mbox exports into a deduplicated SQLite database"
 requires-python = ">=3.11"
+dependencies = ["html2text", "tqdm"]
+
+[project.scripts]
+mbox-parser = "mbox_parser.cli:main"
 
 [project.optional-dependencies]
 dev = ["ruff", "pytest", "mypy"]
