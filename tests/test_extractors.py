@@ -1,7 +1,9 @@
-from email.message import EmailMessage
+import email.header
+from email.message import EmailMessage, Message
 from pathlib import Path
 
 from mbox_parser.extractors import (
+    _sanitize_filename,
     decode_subject,
     extract_attachments,
     extract_body,
@@ -117,6 +119,48 @@ class TestExtractBody:
         assert html is not None
 
 
+class TestSanitizeFilename:
+    def test_plain_filename_unchanged(self):
+        assert _sanitize_filename("report.pdf") == "report.pdf"
+
+    def test_strips_slashes(self):
+        assert _sanitize_filename("/CGV_defaut.pdf") == "CGV_defaut.pdf"
+
+    def test_strips_path_components(self):
+        assert _sanitize_filename("path/to/file.doc") == "file.doc"
+
+    def test_strips_backslash_path(self):
+        assert _sanitize_filename("C:\\Users\\docs\\file.doc") == "file.doc"
+
+    def test_strips_colons_and_newlines(self):
+        result = _sanitize_filename("file:name\nwith\rstuff.pdf")
+        assert "/" not in result
+        assert ":" not in result
+        assert "\n" not in result
+        assert "\r" not in result
+
+    def test_decodes_mime_encoded(self):
+        mime_name = "=?UTF-8?B?ZG9jdW1lbnQucGRm?="  # "document.pdf"
+        assert _sanitize_filename(mime_name) == "document.pdf"
+
+    def test_strips_url_query_string(self):
+        result = _sanitize_filename("https://example.com/file.pdf?token=abc123")
+        assert result == "file.pdf"
+
+    def test_truncates_long_names(self):
+        long_name = "a" * 250 + ".pdf"
+        result = _sanitize_filename(long_name)
+        assert len(result) <= 200
+        assert result.endswith(".pdf")
+
+    def test_fallback_on_empty(self):
+        result = _sanitize_filename("...")
+        assert result.startswith("attachment_")
+
+    def test_strips_null_bytes(self):
+        assert "\0" not in _sanitize_filename("file\0name.pdf")
+
+
 class TestExtractAttachments:
     def test_attachment_saved(self, tmp_path: Path):
         msg = EmailMessage()
@@ -169,3 +213,39 @@ class TestExtractAttachments:
         filenames = {r["filename"] for r in result}
         assert "doc.pdf" in filenames
         assert "doc_1.pdf" in filenames
+
+    def test_header_object_disposition(self, tmp_path: Path):
+        """Content-Disposition as a Header object should not cause AttributeError."""
+        msg = Message()
+        msg["Content-Type"] = "multipart/mixed; boundary=boundary123"
+        msg.set_payload([])
+
+        part = Message()
+        part["Content-Type"] = "application/pdf"
+        # Set Content-Disposition as a Header object (not a plain string)
+        part["Content-Disposition"] = email.header.Header(
+            'attachment; filename="test.pdf"'
+        )
+        part.set_payload(b"PDF bytes", "utf-8")
+        msg.get_payload().append(part)
+
+        result = extract_attachments(msg, tmp_path, email_id=99)
+        assert len(result) == 1
+        assert result[0]["filename"] == "test.pdf"
+
+    def test_unsafe_filename_sanitised(self, tmp_path: Path):
+        """Filenames with path-illegal characters should be sanitised."""
+        msg = EmailMessage()
+        msg.set_content("Body text")
+        msg.add_attachment(
+            b"content",
+            maintype="application",
+            subtype="pdf",
+            filename="/path/to/evil:file.pdf",
+        )
+
+        result = extract_attachments(msg, tmp_path, email_id=1)
+        assert len(result) == 1
+        assert "/" not in result[0]["filename"]
+        assert ":" not in result[0]["filename"]
+        assert (tmp_path / result[0]["file_path"]).exists()

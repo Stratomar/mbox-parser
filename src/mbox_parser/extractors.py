@@ -104,6 +104,49 @@ def extract_body(message: Message) -> tuple[str | None, str | None]:
     return text_body or None, html_body or None
 
 
+_ATTACHMENT_COUNTER: int = 0
+
+
+def _sanitize_filename(raw: str) -> str:
+    """Decode MIME-encoded filenames, strip illegal chars, and truncate."""
+    global _ATTACHMENT_COUNTER
+
+    # Decode MIME-encoded parts (e.g. =?UTF-8?B?...?=)
+    try:
+        decoded_parts = email.header.decode_header(raw)
+        segments: list[str] = []
+        for data, charset in decoded_parts:
+            if isinstance(data, bytes):
+                segments.append(data.decode(charset or "utf-8", errors="replace"))
+            else:
+                segments.append(data)
+        name = "".join(segments)
+    except Exception:
+        name = raw
+
+    # Collapse to basename — strip URL-like prefixes and path components
+    name = name.split("?")[0]  # strip query strings from URLs
+    name = name.replace("\\", "/")
+    name = name.rsplit("/", 1)[-1]  # take last path component
+
+    # Strip illegal / problematic characters
+    name = re.sub(r'[/\\:\n\r\t\0<>"|*]', "_", name)
+    name = name.strip(". ")  # leading/trailing dots or spaces
+
+    # Truncate to 200 chars (preserving extension)
+    if len(name) > 200:
+        p = Path(name)
+        stem = p.stem[: 200 - len(p.suffix)]
+        name = stem + p.suffix
+
+    # Fallback if empty
+    if not name:
+        _ATTACHMENT_COUNTER += 1
+        name = f"attachment_{_ATTACHMENT_COUNTER}"
+
+    return name
+
+
 def _safe_filename(filename: str, existing: set[str]) -> str:
     if filename not in existing:
         existing.add(filename)
@@ -127,7 +170,7 @@ def extract_attachments(
     attach_dir = output_dir / "attachments" / str(email_id)
 
     for part in message.walk():
-        disposition = part.get("Content-Disposition", "")
+        disposition = str(part.get("Content-Disposition", ""))
         if not disposition:
             continue
 
@@ -161,6 +204,7 @@ def extract_attachments(
         if not filename:
             continue
 
+        filename = _sanitize_filename(filename)
         safe_name = _safe_filename(filename, existing_names)
         attach_dir.mkdir(parents=True, exist_ok=True)
         file_path = attach_dir / safe_name
